@@ -1,9 +1,15 @@
+// =============================================
+// complaints.js – Complaints Module
+// User: Submit complaints, view own
+// Admin: View all, update status
+// =============================================
+
 import { db } from "./firebase.js";
 import { showToast } from "./auth.js";
 import { createNotification } from "./notifications.js";
 import {
   collection, addDoc, query, where,
-  onSnapshot, doc, updateDoc, serverTimestamp
+  onSnapshot, doc, updateDoc, serverTimestamp, deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // =============================================
@@ -192,6 +198,50 @@ export async function updateComplaintStatus(complaintId, newStatus, ownerId) {
 }
 
 // =============================================
+// DELETE COMPLAINT (User/Admin)
+// =============================================
+export async function deleteComplaint(complaintId, isAdmin = false) {
+  try {
+    console.log("=== DELETING COMPLAINT ===");
+    console.log("Complaint ID:", complaintId);
+    console.log("Is Admin:", isAdmin);
+    
+    // Confirmation dialog
+    const confirmed = confirm(
+      isAdmin 
+        ? "Are you sure you want to delete this complaint?" 
+        : "Are you sure you want to delete your complaint? This cannot be undone."
+    );
+    
+    if (!confirmed) {
+      console.log("Delete cancelled by user");
+      return false;
+    }
+    
+    // Delete from Firestore
+    await deleteDoc(doc(db, "complaints", complaintId));
+    
+    console.log("✅ Complaint deleted successfully");
+    showToast("Complaint deleted successfully!", "success");
+    return true;
+    
+  } catch (error) {
+    console.error("❌ DELETE COMPLAINT ERROR ===");
+    console.error("Error:", error);
+    console.error("Error code:", error.code);
+    
+    let errorMessage = "Failed to delete complaint.";
+    
+    if (error.code === "permission-denied") {
+      errorMessage = "Permission denied. You cannot delete this complaint.";
+    }
+    
+    showToast(errorMessage, "error");
+    return false;
+  }
+}
+
+// =============================================
 // RENDER USER COMPLAINTS TABLE
 // =============================================
 export function renderUserComplaintsTable(complaints, containerId) {
@@ -229,6 +279,7 @@ export function renderUserComplaintsTable(complaints, containerId) {
           <th>Location</th>
           <th>Status</th>
           <th>Date</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -240,10 +291,20 @@ export function renderUserComplaintsTable(complaints, containerId) {
             <td class="fs-sm">${escHtml(c.location || "—")}</td>
             <td>${getStatusBadge(c.status)}</td>
             <td class="text-muted fs-sm">${formatDate(c.createdAt)}</td>
+            <td>
+              <button class="btn-danger btn-sm" onclick="window.deleteUserComplaint('${c.id}')" title="Delete">
+                🗑️ Delete
+              </button>
+            </td>
           </tr>
         `).join("")}
       </tbody>
     </table>`;
+  
+  // Expose delete function to window
+  window.deleteUserComplaint = async (id) => {
+    await deleteComplaint(id, false);
+  };
     
   console.log("✅ Table rendered successfully");
 }
@@ -306,11 +367,16 @@ export function renderAdminComplaintsTable(complaints, containerId, filterStatus
             <td class="fs-sm">${escHtml(c.userName || "User")}</td>
             <td>${getStatusBadge(c.status)}</td>
             <td>
-              <select class="status-select" data-id="${c.id}" data-owner="${c.userId}" onchange="window.updateComplaintStatus(this)">
-                <option ${c.status === "Submitted" ? "selected" : ""}>Submitted</option>
-                <option ${c.status === "In Progress" ? "selected" : ""}>In Progress</option>
-                <option ${c.status === "Resolved" ? "selected" : ""}>Resolved</option>
-              </select>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <select class="status-select" data-id="${c.id}" data-owner="${c.userId}" onchange="window.updateComplaintStatus(this)">
+                  <option ${c.status === "Submitted" ? "selected" : ""}>Submitted</option>
+                  <option ${c.status === "In Progress" ? "selected" : ""}>In Progress</option>
+                  <option ${c.status === "Resolved" ? "selected" : ""}>Resolved</option>
+                </select>
+                <button class="btn-danger btn-sm" onclick="window.deleteAdminComplaint('${c.id}')" title="Delete">
+                  🗑️
+                </button>
+              </div>
             </td>
           </tr>
         `).join("")}
@@ -321,6 +387,10 @@ export function renderAdminComplaintsTable(complaints, containerId, filterStatus
   window.updateComplaintStatus = async (select) => {
     const { id, owner } = select.dataset;
     await updateComplaintStatus(id, select.value, owner);
+  };
+  
+  window.deleteAdminComplaint = async (id) => {
+    await deleteComplaint(id, true);
   };
   
   console.log("✅ Admin table rendered successfully");

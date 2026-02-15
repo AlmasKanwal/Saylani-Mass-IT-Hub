@@ -1,8 +1,14 @@
+// =============================================
+// volunteer.js – Volunteer Registration Module
+// User: Register for events
+// Admin: View all registrations in table
+// =============================================
+
 import { db } from "./firebase.js";
 import { showToast } from "./auth.js";
 import {
   collection, addDoc, query, where,
-  onSnapshot, serverTimestamp
+  onSnapshot, serverTimestamp, deleteDoc, doc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // Sample events data (can be moved to Firestore later)
@@ -122,6 +128,50 @@ export function listenAllVolunteers(renderFn) {
 }
 
 // =============================================
+// DELETE VOLUNTEER REGISTRATION (User/Admin)
+// =============================================
+export async function deleteVolunteerRegistration(registrationId, isAdmin = false) {
+  try {
+    console.log("=== DELETING VOLUNTEER REGISTRATION ===");
+    console.log("Registration ID:", registrationId);
+    console.log("Is Admin:", isAdmin);
+    
+    // Confirmation dialog
+    const confirmed = confirm(
+      isAdmin 
+        ? "Are you sure you want to delete this volunteer registration?" 
+        : "Are you sure you want to cancel your registration? This cannot be undone."
+    );
+    
+    if (!confirmed) {
+      console.log("Delete cancelled by user");
+      return false;
+    }
+    
+    // Delete from Firestore
+    await deleteDoc(doc(db, "volunteers", registrationId));
+    
+    console.log("✅ Registration deleted successfully");
+    showToast("Registration deleted successfully!", "success");
+    return true;
+    
+  } catch (error) {
+    console.error("❌ DELETE VOLUNTEER ERROR ===");
+    console.error("Error:", error);
+    console.error("Error code:", error.code);
+    
+    let errorMessage = "Failed to delete registration.";
+    
+    if (error.code === "permission-denied") {
+      errorMessage = "Permission denied. You cannot delete this registration.";
+    }
+    
+    showToast(errorMessage, "error");
+    return false;
+  }
+}
+
+// =============================================
 // RENDER EVENTS GRID (User)
 // =============================================
 export function renderEventsGrid(containerId, onRegister) {
@@ -192,6 +242,7 @@ export function renderUserVolunteersTable(items, containerId) {
           <th>Skills</th>
           <th>Status</th>
           <th>Date</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -202,10 +253,20 @@ export function renderUserVolunteersTable(items, containerId) {
             <td class="fs-sm">${escHtml(item.skills || "—")}</td>
             <td><span class="badge-status badge-found">${item.status}</span></td>
             <td class="text-muted fs-sm">${formatDate(item.createdAt)}</td>
+            <td>
+              <button class="btn-danger btn-sm" onclick="window.deleteUserVolunteer('${item.id}')" title="Cancel Registration">
+                🗑️ Cancel
+              </button>
+            </td>
           </tr>
         `).join("")}
       </tbody>
     </table>`;
+  
+  // Expose delete function
+  window.deleteUserVolunteer = async (id) => {
+    await deleteVolunteerRegistration(id, false);
+  };
 }
 
 // =============================================
@@ -231,6 +292,7 @@ export function renderAdminVolunteersTable(items, containerId) {
           <th>Skills</th>
           <th>Status</th>
           <th>Registered</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -243,10 +305,20 @@ export function renderAdminVolunteersTable(items, containerId) {
             <td class="fs-sm">${escHtml(item.skills || "—")}</td>
             <td><span class="badge-status badge-found">${item.status}</span></td>
             <td class="text-muted fs-sm">${formatDate(item.createdAt)}</td>
+            <td>
+              <button class="btn-danger btn-sm" onclick="window.deleteAdminVolunteer('${item.id}')" title="Delete">
+                🗑️
+              </button>
+            </td>
           </tr>
         `).join("")}
       </tbody>
     </table>`;
+  
+  // Expose delete function
+  window.deleteAdminVolunteer = async (id) => {
+    await deleteVolunteerRegistration(id, true);
+  };
 }
 
 // ---- Helpers ----

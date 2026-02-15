@@ -1,9 +1,17 @@
+// =============================================
+// lostfound.js – Lost & Found Module  
+// User: Submit items, view own posts
+// Admin: View all, update status
+// Image upload: Cloudinary
+// Also handles keyword matching for notifications
+// =============================================
+
 import { db } from "./firebase.js";
 import { showToast } from "./auth.js";
 import { createNotification } from "./notifications.js";
 import {
   collection, addDoc, query, where,
-  onSnapshot, doc, updateDoc, serverTimestamp, getDocs
+  onSnapshot, doc, updateDoc, serverTimestamp, getDocs, deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // =============================================
@@ -234,6 +242,50 @@ export async function updateLostFoundStatus(itemId, newStatus, itemOwnerId) {
 }
 
 // =============================================
+// DELETE LOST/FOUND ITEM (User/Admin)
+// =============================================
+export async function deleteLostFoundItem(itemId, isAdmin = false) {
+  try {
+    console.log("=== DELETING L&F ITEM ===");
+    console.log("Item ID:", itemId);
+    console.log("Is Admin:", isAdmin);
+    
+    // Confirmation dialog
+    const confirmed = confirm(
+      isAdmin 
+        ? "Are you sure you want to delete this item?" 
+        : "Are you sure you want to delete this item? This cannot be undone."
+    );
+    
+    if (!confirmed) {
+      console.log("Delete cancelled by user");
+      return false;
+    }
+    
+    // Delete from Firestore
+    await deleteDoc(doc(db, "lost_found_items", itemId));
+    
+    console.log("✅ Item deleted successfully");
+    showToast("Item deleted successfully!", "success");
+    return true;
+    
+  } catch (error) {
+    console.error("❌ DELETE L&F ITEM ERROR ===");
+    console.error("Error:", error);
+    console.error("Error code:", error.code);
+    
+    let errorMessage = "Failed to delete item.";
+    
+    if (error.code === "permission-denied") {
+      errorMessage = "Permission denied. You cannot delete this item.";
+    }
+    
+    showToast(errorMessage, "error");
+    return false;
+  }
+}
+
+// =============================================
 // RENDER ITEMS TABLE (User view)
 // =============================================
 export function renderUserLostFoundTable(items, containerId) {
@@ -271,6 +323,7 @@ export function renderUserLostFoundTable(items, containerId) {
           <th>Category</th>
           <th>Status</th>
           <th>Date</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -288,10 +341,20 @@ export function renderUserLostFoundTable(items, containerId) {
             <td>${escHtml(item.category || "—")}</td>
             <td>${getStatusBadge(item.status)}</td>
             <td class="text-muted fs-sm">${formatDate(item.createdAt)}</td>
+            <td>
+              <button class="btn-danger btn-sm" onclick="window.deleteUserLFItem('${item.id}')" title="Delete">
+                🗑️ Delete
+              </button>
+            </td>
           </tr>
         `).join("")}
       </tbody>
     </table>`;
+  
+  // Expose delete function to window
+  window.deleteUserLFItem = async (id) => {
+    await deleteLostFoundItem(id, false);
+  };
     
   console.log("✅ Table rendered successfully");
 }
@@ -349,10 +412,15 @@ export function renderAdminLostFoundTable(items, containerId) {
             <td class="fs-sm">${escHtml(item.userName || "User")}</td>
             <td>${getStatusBadge(item.status)}</td>
             <td>
-              <select class="status-select" data-id="${item.id}" data-owner="${item.userId}" onchange="window.updateLFStatus(this)">
-                <option ${item.status === "Pending" ? "selected" : ""}>Pending</option>
-                <option ${item.status === "Found" ? "selected" : ""}>Found</option>
-              </select>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <select class="status-select" data-id="${item.id}" data-owner="${item.userId}" onchange="window.updateLFStatus(this)">
+                  <option ${item.status === "Pending" ? "selected" : ""}>Pending</option>
+                  <option ${item.status === "Found" ? "selected" : ""}>Found</option>
+                </select>
+                <button class="btn-danger btn-sm" onclick="window.deleteAdminLFItem('${item.id}')" title="Delete">
+                  🗑️
+                </button>
+              </div>
             </td>
           </tr>
         `).join("")}
@@ -363,6 +431,11 @@ export function renderAdminLostFoundTable(items, containerId) {
   window.updateLFStatus = async (select) => {
     const { id, owner } = select.dataset;
     await updateLostFoundStatus(id, select.value, owner);
+  };
+  
+  // Expose delete function to window
+  window.deleteAdminLFItem = async (id) => {
+    await deleteLostFoundItem(id, true);
   };
   
   // Image viewer function
